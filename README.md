@@ -1,4 +1,4 @@
-# auto-tickout-bot
+# auto-kickout-bot
 
 ## Usage
 
