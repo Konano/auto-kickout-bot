@@ -20,10 +20,11 @@ def error_callback(update, context):
 
 def kickout(update, context):
     try:
-        context.bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
         for new_user in update.message.new_chat_members:
             context.bot.kick_chat_member(chat_id=update.message.chat.id, user_id=new_user.id)
+        for new_user in update.message.new_chat_members:
             context.bot.unban_chat_member(chat_id=update.message.chat.id, user_id=new_user.id)
+        context.bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
