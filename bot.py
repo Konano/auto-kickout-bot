@@ -25,7 +25,6 @@ def kickout(update, context):
         for new_user in update.effective_message.new_chat_members:
             update.effective_chat.unban_member(user_id=new_user.id)
         update.effective_message.delete()
-
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
