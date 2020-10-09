@@ -20,10 +20,10 @@ def error_callback(update, context):
 
 def kickout(update, context):
     try:
-        context.bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
-        for new_user in update.message.new_chat_members:
-            context.bot.kick_chat_member(chat_id=update.message.chat.id, user_id=new_user.id)
-            context.bot.unban_chat_member(chat_id=update.message.chat.id, user_id=new_user.id)
+        update.effective_message.delete()
+        for new_user in update.effective_message.new_chat_members:
+            update.effective_chat.kick_member(user_id=new_user.id)
+            update.effective_chat.unban_member(user_id=new_user.id)
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
@@ -31,7 +31,7 @@ def kickout(update, context):
 
 def remove_kickout_msg(update, context):
     try:
-        context.bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
+        update.effective_message.delete()
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
