@@ -9,7 +9,7 @@ config.read('config.ini')
 
 
 # Log
-BASIC_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
+BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 
@@ -33,7 +33,7 @@ ehlr.setFormatter(basic_formatter)
 ehlr.setLevel('WARNING')
 
 logger = logging.getLogger(__name__)
-logger.setLevel('INFO')
+logger.setLevel('DEBUG')
 logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
