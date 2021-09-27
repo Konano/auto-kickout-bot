@@ -74,7 +74,11 @@ def main():
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, kickout))
     dp.add_handler(MessageHandler(Filters.status_update.left_chat_member, remove_kickout_msg))
     
-    updater.start_polling()
+    if config['BOT'].getboolean('webhook'):
+        webhook = config._sections['WEBHOOK']
+        updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['token'], cert=webhook['cert'], webhook_url=f'https://{webhook["url"]}:8443/{webhook["port"]}/{webhook["token"]}')
+    else:
+        updater.start_polling()
     updater.idle()
 
 
