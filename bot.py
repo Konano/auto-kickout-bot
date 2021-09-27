@@ -1,5 +1,6 @@
 import configparser, logging, traceback
 from telegram.ext import Updater, Filters, MessageHandler
+import sys
 
 
 # Config
@@ -8,9 +9,33 @@ config.read('config.ini')
 
 
 # Log
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s',
-                    level=logging.INFO)
+BASIC_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
+DATE_FORMAT = None
+basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
+
+
+class MaxFilter:
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        if record.levelno <= self.max_level:
+            return True
+
+
+chlr = logging.StreamHandler(stream=sys.stdout)
+chlr.setFormatter(basic_formatter)
+chlr.setLevel('INFO')
+chlr.addFilter(MaxFilter(logging.INFO))
+
+ehlr = logging.StreamHandler(stream=sys.stderr)
+ehlr.setFormatter(basic_formatter)
+ehlr.setLevel('WARNING')
+
 logger = logging.getLogger(__name__)
+logger.setLevel('INFO')
+logger.addHandler(chlr)
+logger.addHandler(ehlr)
 
 
 # Error Callback
@@ -27,7 +52,7 @@ def kickout(update, context):
         update.effective_message.delete()
     except Exception as e:
         logger.error(e)
-        logger.debug(traceback.format_exc())
+        logger.warning(traceback.format_exc())
 
 
 def remove_kickout_msg(update, context):
@@ -35,7 +60,7 @@ def remove_kickout_msg(update, context):
         update.effective_message.delete()
     except Exception as e:
         logger.error(e)
-        logger.debug(traceback.format_exc())
+        logger.warning(traceback.format_exc())
 
 
 def main():
