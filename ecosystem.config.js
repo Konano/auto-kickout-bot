@@ -1,9 +1,9 @@
 module.exports = {
     apps: [{
-        name: 'ErhaBot',
+        name: 'AutoKickoutBot',
         cmd: 'bot.py',
         interpreter: 'python3',
-        // autorestart: false,
+        autorestart: true,
         // watch: true,
     }]
 };

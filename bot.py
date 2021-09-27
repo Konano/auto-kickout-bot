@@ -44,23 +44,26 @@ def error_callback(update, context):
 
 
 def kickout(update, context):
+    logger.info(f'kickout: [{update.effective_chat.id}] {update.effective_chat.title}')
     try:
         for new_user in update.effective_message.new_chat_members:
-            update.effective_chat.kick_member(user_id=new_user.id)
-        for new_user in update.effective_message.new_chat_members:
-            update.effective_chat.unban_member(user_id=new_user.id)
+            update.effective_chat.ban_member(user_id=new_user.id)
         update.effective_message.delete()
+        for new_user in update.effective_message.new_chat_members:
+            if update.message.channel_chat_created or update.message.supergroup_chat_created:
+                update.effective_chat.unban_member(user_id=new_user.id)
     except Exception as e:
         logger.error(e)
-        logger.warning(traceback.format_exc())
+        logger.error(traceback.format_exc())
 
 
 def remove_kickout_msg(update, context):
+    logger.info(f'remove_kickout_msg: [{update.effective_chat.id}] {update.effective_chat.title}')
     try:
         update.effective_message.delete()
     except Exception as e:
         logger.error(e)
-        logger.warning(traceback.format_exc())
+        logger.error(traceback.format_exc())
 
 
 def main():
