@@ -32,6 +32,15 @@ ehlr = logging.StreamHandler(stream=sys.stderr)
 ehlr.setFormatter(basic_formatter)
 ehlr.setLevel('WARNING')
 
+fhlr = logging.handlers.TimedRotatingFileHandler(
+    'log/log', when='H', interval=1, backupCount=24*7)
+fhlr.setFormatter(basic_formatter)
+fhlr.setLevel('DEBUG')
+
+logger = logging.getLogger()
+logger.setLevel('NOTSET')
+logger.addHandler(fhlr)
+
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(chlr)
@@ -54,7 +63,7 @@ def kickout(update, context):
                 update.effective_chat.unban_member(user_id=new_user.id)
     except Exception as e:
         logger.error(e)
-        logger.error(traceback.format_exc())
+        logger.debug(traceback.format_exc())
 
 
 def remove_kickout_msg(update, context):
@@ -63,7 +72,7 @@ def remove_kickout_msg(update, context):
         update.effective_message.delete()
     except Exception as e:
         logger.error(e)
-        logger.error(traceback.format_exc())
+        logger.debug(traceback.format_exc())
 
 
 def main():
