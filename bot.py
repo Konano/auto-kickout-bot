@@ -1,5 +1,6 @@
 import configparser, logging, traceback
 from telegram.ext import Updater, Filters, MessageHandler
+from telegram.error import BadRequest
 import sys
 
 
@@ -61,6 +62,12 @@ def kickout(update, context):
         for new_user in update.effective_message.new_chat_members:
             if update.message.channel_chat_created or update.message.supergroup_chat_created:
                 update.effective_chat.unban_member(user_id=new_user.id)
+    except BadRequest as e:
+        if e.message == 'Chat_admin_required' or e.message[:17] == 'Not enough rights':
+            logger.info(f'FAILED: {e.message}')
+        else:
+            logger.error(e)
+            logger.debug(traceback.format_exc())
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
@@ -70,6 +77,12 @@ def remove_kickout_msg(update, context):
     logger.info(f'remove_kickout_msg: [{update.effective_chat.id}] {update.effective_chat.title}')
     try:
         update.effective_message.delete()
+    except BadRequest as e:
+        if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
+            logger.info(f'FAILED: {e.message}')
+        else:
+            logger.error(e)
+            logger.debug(traceback.format_exc())
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
