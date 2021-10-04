@@ -60,8 +60,7 @@ def kickout(update, context):
             update.effective_chat.ban_member(user_id=new_user.id)
         update.effective_message.delete()
         for new_user in update.effective_message.new_chat_members:
-            if update.message.channel_chat_created or update.message.supergroup_chat_created:
-                update.effective_chat.unban_member(user_id=new_user.id)
+            update.effective_chat.unban_member(user_id=new_user.id)
     except BadRequest as e:
         if e.message == 'Chat_admin_required' or e.message[:17] == 'Not enough rights':
             logger.info(f'FAILED: {e.message}')
