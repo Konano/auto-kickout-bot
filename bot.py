@@ -54,34 +54,65 @@ def error_callback(update, context):
 
 
 def kickout(update, context):
-    logger.info(f'kickout: [{update.effective_chat.id}] {update.effective_chat.title}')
     try:
-        for new_user in update.effective_message.new_chat_members:
-            update.effective_chat.ban_member(user_id=new_user.id)
-        update.effective_message.delete()
-        for new_user in update.effective_message.new_chat_members:
-            update.effective_chat.unban_member(user_id=new_user.id)
-    except BadRequest as e:
-        if e.message == 'Chat_admin_required' or e.message[:17] == 'Not enough rights':
-            logger.info(f'FAILED: {e.message}')
-        else:
-            logger.error(e)
-            logger.debug(traceback.format_exc())
+        chat = update.effective_chat
+        msg = update.effective_message
+        if len(msg.new_chat_members) > 1:
+            logger.info(f'[{chat.id}] {chat.title}: others added users')
+            return
+        new_user = msg.new_chat_members[0]
+        if new_user.id == config['BOT'].getint('id'):
+            logger.info(f'[{chat.id}] {chat.title}: bot join')
+            return
+        if new_user.id != msg.from_user.id:
+            logger.info(f'[{chat.id}] {chat.title}: others added user')
+            return
+        # Comfirm join message
+        logger.info(f'[{chat.id}] {chat.title}: RUNNING: kickout new user')
+        # Kickout new user
+        try:
+            chat.ban_member(user_id=new_user.id)
+            chat.unban_member(user_id=new_user.id)
+        except BadRequest as e:
+            if e.message == 'Chat_admin_required' or e.message[:17] == 'Not enough rights':
+                logger.info(f'FAILED: {e.message}')
+                return  # Not enough rights, so do nothing
+            else:
+                logger.error(f'[{chat.id}] {chat.title}: {e.message}')
+                logger.debug(traceback.format_exc())
+        # Remove join message
+        try:
+            update.effective_message.delete()
+        except BadRequest as e:
+            if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
+                logger.info(f'FAILED: {e.message}')
+            else:
+                logger.error(f'[{chat.id}] {chat.title}: {e.message}')
+                logger.debug(traceback.format_exc())
+
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
 
 
 def remove_kickout_msg(update, context):
-    logger.info(f'remove_kickout_msg: [{update.effective_chat.id}] {update.effective_chat.title}')
     try:
-        update.effective_message.delete()
-    except BadRequest as e:
-        if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
-            logger.info(f'FAILED: {e.message}')
-        else:
-            logger.error(e)
-            logger.debug(traceback.format_exc())
+        chat = update.effective_chat
+        msg = update.effective_message
+        if msg.from_user.id != config['BOT'].getint('id'):
+            logger.info(f'[{chat.id}] {chat.title}: others remove user')
+            return
+        # Comfirm join message
+        logger.info(f'[{chat.id}] {chat.title}: RUNNING: remove kickout message')
+        # Remove kickout message
+        try:
+            update.effective_message.delete()
+        except BadRequest as e:
+            if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
+                logger.info(f'FAILED: {e.message}')
+            else:
+                logger.error(f'[{chat.id}] {chat.title}: {e.message}')
+                logger.debug(traceback.format_exc())
     except Exception as e:
         logger.error(e)
         logger.debug(traceback.format_exc())
