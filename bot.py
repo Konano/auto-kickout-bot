@@ -1,8 +1,10 @@
-import configparser, logging, traceback
-from telegram.ext import Updater, Filters, MessageHandler
-from telegram.error import BadRequest
+import configparser
+import logging
 import sys
+import traceback
 
+from telegram.error import BadRequest
+from telegram.ext import Filters, MessageHandler, Updater
 
 # Config
 config = configparser.ConfigParser()
@@ -125,10 +127,11 @@ def main():
 
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, kickout))
     dp.add_handler(MessageHandler(Filters.status_update.left_chat_member, remove_kickout_msg))
-    
+
     if config['BOT'].getboolean('webhook'):
         webhook = config._sections['WEBHOOK']
-        updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['token'], cert=webhook['cert'], webhook_url=f'https://{webhook["url"]}:8443/{webhook["port"]}/{webhook["token"]}')
+        updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['token'],
+                              cert=webhook['cert'], webhook_url=f'https://{webhook["url"]}:8443/{webhook["port"]}/{webhook["token"]}')
     else:
         updater.start_polling()
     updater.idle()
