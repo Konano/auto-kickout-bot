@@ -77,7 +77,7 @@ def kickout(update, context):
             chat.unban_member(user_id=new_user.id)
         except BadRequest as e:
             if e.message == 'Chat_admin_required' or e.message[:17] == 'Not enough rights':
-                logger.info(f'FAILED: {e.message}')
+                logger.debug(f'FAILED: {e.message}')
                 return  # Not enough rights, so do nothing
             else:
                 logger.error(f'[{chat.id}] {chat.title}: {e.message}')
@@ -87,7 +87,7 @@ def kickout(update, context):
             update.effective_message.delete()
         except BadRequest as e:
             if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
-                logger.info(f'FAILED: {e.message}')
+                logger.debug(f'FAILED: {e.message}')
             else:
                 logger.error(f'[{chat.id}] {chat.title}: {e.message}')
                 logger.debug(traceback.format_exc())
@@ -111,7 +111,7 @@ def remove_kickout_msg(update, context):
             update.effective_message.delete()
         except BadRequest as e:
             if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
-                logger.info(f'FAILED: {e.message}')
+                logger.debug(f'FAILED: {e.message}')
             else:
                 logger.error(f'[{chat.id}] {chat.title}: {e.message}')
                 logger.debug(traceback.format_exc())
