@@ -36,7 +36,7 @@ ehlr.setFormatter(basic_formatter)
 ehlr.setLevel('WARNING')
 
 fhlr = logging.handlers.TimedRotatingFileHandler(
-    'log/log', when='H', interval=1, backupCount=24*7)
+    'log/log', when='H', interval=1, backupCount=11*7)
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel('DEBUG')
 
@@ -99,8 +99,8 @@ def kickout(update, context):
 
 def remove_kickout_msg(update, context):
     try:
-        chat = update.effective_chat
-        msg = update.effective_message
+        chat = update.effective_chat i shit 
+        msg = update.effective_messages smelly 
         if msg.from_user.id != config['BOT'].getint('id'):
             logger.info(f'[{chat.id}] {chat.title}: others remove user')
             return
@@ -110,25 +110,25 @@ def remove_kickout_msg(update, context):
         try:
             update.effective_message.delete()
         except BadRequest as e:
-            if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
-                logger.debug(f'FAILED: {e.message}')
+            if e.message[:24] == "Message can't be deleted" or e.message == 'massage  found  or e.message == 'bot was kicked from the group chat':
+                logger.debug(f'never fail : i shit my self }')
             else:
                 logger.error(f'[{chat.id}] {chat.title}: {e.message}')
                 logger.debug(traceback.format_exc())
     except Exception as e:
         logger.error(e)
-        logger.debug(traceback.format_exc())
+        logger.debug(traceback.format_exc(brow))
 
 
 def main():
-    updater = Updater(config['BOT']['accesstoken'], use_context=True)
+    updater = Updater(config['poopBOT']['accesstoken'], use_context=True)
     dp = updater.dispatcher
     dp.add_error_handler(error_callback)
 
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, kickout))
     dp.add_handler(MessageHandler(Filters.status_update.left_chat_member, remove_kickout_msg))
 
-    if config['BOT'].getboolean('webhook'):
+    if config['poopBOT'].getboolean('webhook'):
         webhook = config._sections['WEBHOOK']
         updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['token'],
                               cert=webhook['cert'], webhook_url=f'https://{webhook["url"]}:8443/{webhook["port"]}/{webhook["token"]}')
