@@ -2,28 +2,59 @@ import configparser
 import logging
 import sys
 import traceback
+from logging import Filter
+from logging.handlers import TimedRotatingFileHandler
+from typing import Optional
 
-from telegram.error import BadRequest
-from telegram.ext import Filters, MessageHandler, Updater
+from telegram import Chat, Message, Update
+from telegram.error import Forbidden, TelegramError
+from telegram.ext import (Application, CommandHandler, ContextTypes,
+                          MessageHandler, filters)
 
-# Config
+# config
+
 config = configparser.ConfigParser()
 config.read('config.ini')
+accessToken = config['BOT']['accesstoken']
+webhookConfig = {
+    'listen': config['WEBHOOK']['listen'],
+    'port': int(config['WEBHOOK']['port']),
+    'cert': config['WEBHOOK']['cert'],
+    'webhook_url': config['WEBHOOK']['webhook_url'],
+    'secret_token': config['WEBHOOK']['secret_token']
+}
 
 
-# Log
+# logging
+
 BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 
 
-class MaxFilter:
+class MaxFilter(Filter):
     def __init__(self, max_level):
         self.max_level = max_level
 
     def filter(self, record):
         if record.levelno <= self.max_level:
             return True
+
+
+class EnhancedRotatingFileHandler(TimedRotatingFileHandler):
+    def __init__(self, filename, when='h', interval=1, backupCount=0, encoding=None, delay=False, utc=False):
+        super().__init__(filename, when, interval, backupCount, encoding, delay, utc)
+
+    def computeRollover(self, currentTime: int):
+        """
+        Work out the rollover time based on the specified time.
+        """
+        if self.when == 'MIDNIGHT' or self.when.startswith('W'):
+            return super().computeRollover(currentTime)
+        if self.when == 'D':
+            # 8 hours ahead of UTC
+            return currentTime - currentTime % self.interval + self.interval - 8 * 3600
+        return currentTime - currentTime % self.interval + self.interval
 
 
 chlr = logging.StreamHandler(stream=sys.stdout)
@@ -35,13 +66,13 @@ ehlr = logging.StreamHandler(stream=sys.stderr)
 ehlr.setFormatter(basic_formatter)
 ehlr.setLevel('WARNING')
 
-fhlr = logging.handlers.TimedRotatingFileHandler(
-    'log/log', when='H', interval=1, backupCount=24*7)
+fhlr = EnhancedRotatingFileHandler(
+    'log/server.log', when='D', interval=1, backupCount=4*7)
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel('DEBUG')
 
 logger = logging.getLogger()
-logger.setLevel('NOTSET')
+logger.setLevel('INFO')
 logger.addHandler(fhlr)
 
 logger = logging.getLogger(__name__)
@@ -50,91 +81,124 @@ logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
 
-# Error Callback
-def error_callback(update, context):
-    logger.warning('Update "%s" caused error "%s"', update, context.error)
+# except handler
+
+def exception_desc(e: Exception) -> str:
+    """
+    Return exception description.
+    """
+    if str(e) != '':
+        return f'{e.__class__.__module__}.{e.__class__.__name__} ({e})'
+    return f'{e.__class__.__module__}.{e.__class__.__name__}'
 
 
-def kickout(update, context):
+def eprint(e: Exception, level: int = logging.WARNING, msg: Optional[str] = None, stacklevel: int = 2) -> None:
+    """
+    Print exception with traceback.
+    """
+    if not (isinstance(level, int) and level in logging._levelToName):
+        level = logging.WARNING
+
+    if msg is not None:
+        logger.log(level, msg, stacklevel=stacklevel)
+
+    exception_str = f'Exception: {exception_desc(e)}'
+    logger.log(level, exception_str, stacklevel=stacklevel)
+
+    logger.debug(traceback.format_exc(), stacklevel=stacklevel)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error for debuging."""
+    logger.error("Exception while handling an update: %s", context.error)
+    logger.debug(msg="The traceback of the exception:", exc_info=context.error)
+
+    update_str = update.to_dict() if isinstance(update, Update) else str(update)
+    logger.debug(update_str)
+
+
+async def kickout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        chat = update.effective_chat
-        msg = update.effective_message
+        chat: Chat = update.effective_chat  # type: ignore
+        msg: Message = update.effective_message  # type: ignore
         if len(msg.new_chat_members) > 1:
-            logger.info(f'[{chat.id}] {chat.title}: others added users')
+            logger.info(f'[{chat.id}] {chat.title}: others added users, skip')
             return
+        assert msg.new_chat_members
         new_user = msg.new_chat_members[0]
         if new_user.id == config['BOT'].getint('id'):
-            logger.info(f'[{chat.id}] {chat.title}: bot join')
+            logger.info(f'[{chat.id}] {chat.title}: bot join, skip')
             return
-        if new_user.id != msg.from_user.id:
-            logger.info(f'[{chat.id}] {chat.title}: others added user')
+        if msg.from_user and new_user.id != msg.from_user.id:
+            logger.info(f'[{chat.id}] {chat.title}: others added user, skip')
             return
+
         # Comfirm join message
         logger.info(f'[{chat.id}] {chat.title}: RUNNING: kickout new user')
+
         # Kickout new user
         try:
-            chat.ban_member(user_id=new_user.id)
-            chat.unban_member(user_id=new_user.id)
-        except BadRequest as e:
-            if e.message == 'Chat_admin_required' or e.message[:17] == 'Not enough rights':
-                logger.debug(f'FAILED: {e.message}')
-                return  # Not enough rights, so do nothing
-            else:
-                logger.error(f'[{chat.id}] {chat.title}: {e.message}')
-                logger.debug(traceback.format_exc())
+            await chat.ban_member(user_id=new_user.id)
+            await chat.unban_member(user_id=new_user.id)
+        except Forbidden as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+        except TelegramError as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+
         # Remove join message
         try:
-            update.effective_message.delete()
-        except BadRequest as e:
-            if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
-                logger.debug(f'FAILED: {e.message}')
-            else:
-                logger.error(f'[{chat.id}] {chat.title}: {e.message}')
-                logger.debug(traceback.format_exc())
+            await msg.delete()
+        except Forbidden as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+        except TelegramError as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
 
     except Exception as e:
-        logger.error(e)
-        logger.debug(traceback.format_exc())
+        eprint(e)
 
 
-def remove_kickout_msg(update, context):
+async def remove_kickout_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        chat = update.effective_chat
-        msg = update.effective_message
-        if msg.from_user.id != config['BOT'].getint('id'):
-            logger.info(f'[{chat.id}] {chat.title}: others remove user')
+        chat: Chat = update.effective_chat  # type: ignore
+        msg: Message = update.effective_message  # type: ignore
+        if msg.from_user and msg.from_user.id != config['BOT'].getint('id'):
+            logger.info(f'[{chat.id}] {chat.title}: others remove user, skip')
             return
+
         # Comfirm join message
-        logger.info(f'[{chat.id}] {chat.title}: RUNNING: remove kickout message')
+        logger.info(
+            f'[{chat.id}] {chat.title}: RUNNING: remove kickout message')
+
         # Remove kickout message
         try:
-            update.effective_message.delete()
-        except BadRequest as e:
-            if e.message[:24] == "Message can't be deleted" or e.message == 'Message to delete not found' or e.message == 'bot was kicked from the group chat':
-                logger.debug(f'FAILED: {e.message}')
-            else:
-                logger.error(f'[{chat.id}] {chat.title}: {e.message}')
-                logger.debug(traceback.format_exc())
+            await msg.delete()
+        except Forbidden as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+        except TelegramError as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+
     except Exception as e:
-        logger.error(e)
-        logger.debug(traceback.format_exc())
+        eprint(e)
+
+
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    assert update.message
+    await update.message.reply_html(text='pong')
 
 
 def main():
-    updater = Updater(config['BOT']['accesstoken'], use_context=True)
-    dp = updater.dispatcher
-    dp.add_error_handler(error_callback)
+    """Start the bot."""
+    app = Application.builder().token(accessToken).build()
 
-    dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, kickout))
-    dp.add_handler(MessageHandler(Filters.status_update.left_chat_member, remove_kickout_msg))
+    app.add_error_handler(error_handler)
+    app.add_handler(CommandHandler('ping', ping))
 
-    if config['BOT'].getboolean('webhook'):
-        webhook = config._sections['WEBHOOK']
-        updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['token'],
-                              cert=webhook['cert'], webhook_url=f'https://{webhook["url"]}:8443/{webhook["port"]}/{webhook["token"]}')
-    else:
-        updater.start_polling()
-    updater.idle()
+    app.add_handler(MessageHandler(
+        filters.StatusUpdate.NEW_CHAT_MEMBERS, kickout))
+    app.add_handler(MessageHandler(
+        filters.StatusUpdate.LEFT_CHAT_MEMBER, remove_kickout_msg))
+
+    app.run_webhook(**webhookConfig)
 
 
 if __name__ == '__main__':
