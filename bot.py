@@ -7,7 +7,7 @@ from logging.handlers import TimedRotatingFileHandler
 from typing import Optional
 
 from telegram import Chat, Message, Update
-from telegram.error import Forbidden, TelegramError
+from telegram.error import Forbidden, TelegramError, BadRequest
 from telegram.ext import (Application, CommandHandler, ContextTypes,
                           MessageHandler, filters)
 
@@ -148,8 +148,8 @@ async def kickout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Remove join message
         try:
             await msg.delete()
-        except Forbidden as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+        except (Forbidden, BadRequest) as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
         except TelegramError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
 
@@ -172,8 +172,8 @@ async def remove_kickout_msg(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Remove kickout message
         try:
             await msg.delete()
-        except Forbidden as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+        except (Forbidden, BadRequest) as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
         except TelegramError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
 
