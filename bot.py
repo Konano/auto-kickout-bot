@@ -2,12 +2,15 @@ import configparser
 import logging
 import sys
 import traceback
+from datetime import datetime
 from logging import Filter
 from logging.handlers import TimedRotatingFileHandler
 from typing import Optional
 
+import sentry_sdk
+from sentry_sdk.integrations.logging import SentryHandler
 from telegram import Chat, Message, Update
-from telegram.error import Forbidden, TelegramError, BadRequest
+from telegram.error import BadRequest, Forbidden, TelegramError
 from telegram.ext import (Application, CommandHandler, ContextTypes,
                           MessageHandler, filters)
 
@@ -16,6 +19,7 @@ from telegram.ext import (Application, CommandHandler, ContextTypes,
 config = configparser.ConfigParser()
 config.read('config.ini')
 accessToken = config['BOT']['accesstoken']
+botID = int(accessToken.split(':')[0])
 webhookConfig = {
     'listen': config['WEBHOOK']['listen'],
     'port': int(config['WEBHOOK']['port']),
@@ -81,6 +85,29 @@ logger.addHandler(chlr)
 logger.addHandler(ehlr)
 
 
+# sentry
+
+if 'SENTRY' in config and config['SENTRY'].get('dsn'):
+    sentry_sdk.init(
+        dsn=config['SENTRY']['dsn'],
+        release=datetime.now().strftime('%Y-%m-%d'),
+        attach_stacktrace=True,
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for tracing.
+        traces_sample_rate=1.0,
+        _experiments={
+            # Set continuous_profiling_auto_start to True
+            # to automatically start the profiler on when
+            # possible.
+            "continuous_profiling_auto_start": True,
+        },
+    )
+    shlr = SentryHandler()
+    shlr.setLevel('WARNING')
+    logging.getLogger().addHandler(shlr)
+    logging.getLogger(__name__).addHandler(shlr)
+
+
 # except handler
 
 def exception_desc(e: Exception) -> str:
@@ -126,7 +153,7 @@ async def kickout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         assert msg.new_chat_members
         new_user = msg.new_chat_members[0]
-        if new_user.id == config['BOT'].getint('id'):
+        if new_user.id == botID:
             logger.info(f'[{chat.id}] {chat.title}: bot join, skip')
             return
         if msg.from_user and new_user.id != msg.from_user.id:
@@ -161,7 +188,7 @@ async def remove_kickout_msg(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         chat: Chat = update.effective_chat  # type: ignore
         msg: Message = update.effective_message  # type: ignore
-        if msg.from_user and msg.from_user.id != config['BOT'].getint('id'):
+        if msg.from_user and msg.from_user.id != botID:
             logger.info(f'[{chat.id}] {chat.title}: others remove user, skip')
             return
 
@@ -183,7 +210,7 @@ async def remove_kickout_msg(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     assert update.message
-    await update.message.reply_html(text='pong')
+    await update.message.reply_text(text='pong')
 
 
 def main():
