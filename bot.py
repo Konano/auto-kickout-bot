@@ -167,8 +167,8 @@ async def kickout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             await chat.ban_member(user_id=new_user.id)
             await chat.unban_member(user_id=new_user.id)
-        except Forbidden as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+        except (Forbidden, BadRequest) as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
         except TelegramError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
 
