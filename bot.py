@@ -1,31 +1,33 @@
 import configparser
 import logging
+import os
 import sys
 import traceback
 from datetime import datetime
 from logging import Filter
 from logging.handlers import TimedRotatingFileHandler
-from typing import Optional
+from typing import Optional, cast
 
 import sentry_sdk
 from sentry_sdk.integrations.logging import SentryHandler
-from telegram import Chat, Message, Update
+from telegram import ChatMemberRestricted, Update
+from telegram.constants import ChatMemberStatus
 from telegram.error import BadRequest, Forbidden, TelegramError
-from telegram.ext import (Application, CommandHandler, ContextTypes,
-                          MessageHandler, filters)
+from telegram.ext import (Application, ChatMemberHandler, CommandHandler,
+                          ContextTypes, MessageHandler, filters)
 
 # config
 
 config = configparser.ConfigParser()
 config.read('config.ini')
-accessToken = config['BOT']['accesstoken']
+accessToken = config.get('bot', 'accesstoken')
 botID = int(accessToken.split(':')[0])
 webhookConfig = {
-    'listen': config['WEBHOOK']['listen'],
-    'port': int(config['WEBHOOK']['port']),
-    'cert': config['WEBHOOK']['cert'],
-    'webhook_url': config['WEBHOOK']['webhook_url'],
-    'secret_token': config['WEBHOOK']['secret_token']
+    'listen': config.get('webhook', 'listen'),
+    'port': config.getint('webhook', 'port'),
+    'secret_token': config.get('webhook', 'secret_token'),
+    'webhook_url': config.get('webhook', 'webhook_url'),
+    'cert': config.get('webhook', 'cert'),
 }
 
 
@@ -57,7 +59,7 @@ class EnhancedRotatingFileHandler(TimedRotatingFileHandler):
             return super().computeRollover(currentTime)
         if self.when == 'D':
             # 8 hours ahead of UTC
-            return currentTime - currentTime % self.interval + self.interval - 8 * 3600
+            return currentTime - (currentTime + 8 * 3600) % self.interval + self.interval
         return currentTime - currentTime % self.interval + self.interval
 
 
@@ -70,15 +72,25 @@ ehlr = logging.StreamHandler(stream=sys.stderr)
 ehlr.setFormatter(basic_formatter)
 ehlr.setLevel('WARNING')
 
-fhlr = EnhancedRotatingFileHandler(
-    'log/server.log', when='D', interval=1, backupCount=4*7)
+os.makedirs('log', exist_ok=True)
+fhlr = EnhancedRotatingFileHandler('log/server.log', when='D', interval=1, backupCount=28)
 fhlr.setFormatter(basic_formatter)
 fhlr.setLevel('DEBUG')
 
+# 日志默认设置
 logger = logging.getLogger()
 logger.setLevel('INFO')
 logger.addHandler(fhlr)
 
+# 模组调用: telegram
+logger = logging.getLogger('telegram')
+logger.setLevel('DEBUG')
+
+# # 模组调用: apscheduler
+# logger = logging.getLogger('apscheduler')
+# logger.setLevel('DEBUG')
+
+# 自行调用
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logger.addHandler(chlr)
@@ -87,9 +99,9 @@ logger.addHandler(ehlr)
 
 # sentry
 
-if 'SENTRY' in config and config['SENTRY'].get('dsn'):
+if config.has_option('sentry', 'dsn'):
     sentry_sdk.init(
-        dsn=config['SENTRY']['dsn'],
+        dsn=config.get('sentry', 'dsn'),
         release=datetime.now().strftime('%Y-%m-%d'),
         attach_stacktrace=True,
         # Set traces_sample_rate to 1.0 to capture 100%
@@ -144,68 +156,62 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.debug(update_str)
 
 
-async def kickout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        chat: Chat = update.effective_chat  # type: ignore
-        msg: Message = update.effective_message  # type: ignore
-        if len(msg.new_chat_members) > 1:
-            logger.info(f'[{chat.id}] {chat.title}: others added users, skip')
-            return
-        assert msg.new_chat_members
-        new_user = msg.new_chat_members[0]
-        if new_user.id == botID:
-            logger.info(f'[{chat.id}] {chat.title}: bot join, skip')
-            return
-        if msg.from_user and new_user.id != msg.from_user.id:
-            logger.info(f'[{chat.id}] {chat.title}: others added user, skip')
-            return
+async def remove_join_left_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    assert update.message
+    chat = update.message.chat
 
-        # Comfirm join message
+    if len(update.message.new_chat_members):
+        logger.info(f'[{chat.id}] {chat.title}: RUNNING: remove join message')
+    elif update.message.left_chat_member is not None:
+        logger.info(f'[{chat.id}] {chat.title}: RUNNING: remove left message')
+    else:
+        raise NotImplementedError
+
+    # Remove join or left message
+    try:
+        await update.message.delete()
+    except (Forbidden, BadRequest) as e:
+        eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
+    except TelegramError as e:
+        eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
+
+
+async def member_status_change(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.chat_member is None or update.chat_member.from_user.id == botID:
+        return
+    chat = update.chat_member.chat
+    from_user_id = update.chat_member.from_user.id
+    old_member = update.chat_member.old_chat_member
+    new_member = update.chat_member.new_chat_member
+    user_id = new_member.user.id
+    old_status = old_member.status
+    new_status = new_member.status
+    logger.info(f'[{chat.id}] {chat.title}: STATUS_CHANGE: ({from_user_id}) ({user_id}) {old_status} -> {new_status}')
+    
+    if from_user_id != user_id:
+        return
+
+    not_previously_in_group = False
+    if old_status in (ChatMemberStatus.BANNED, ChatMemberStatus.LEFT):
+        not_previously_in_group = True
+    if old_status == ChatMemberStatus.RESTRICTED and not cast(ChatMemberRestricted, old_member).is_member:
+        not_previously_in_group = True
+
+    now_in_group = False
+    if new_status == ChatMemberStatus.MEMBER:
+        now_in_group = True
+    if new_status == ChatMemberStatus.RESTRICTED and cast(ChatMemberRestricted, new_member).is_member:
+        now_in_group = True
+
+    if not_previously_in_group and now_in_group:
         logger.info(f'[{chat.id}] {chat.title}: RUNNING: kickout new user')
-
-        # Kickout new user
         try:
-            await chat.ban_member(user_id=new_user.id)
-            await chat.unban_member(user_id=new_user.id)
+            await chat.ban_member(user_id)
+            await chat.unban_member(user_id)
         except (Forbidden, BadRequest) as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
         except TelegramError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
-
-        # Remove join message
-        try:
-            await msg.delete()
-        except (Forbidden, BadRequest) as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
-        except TelegramError as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
-
-    except Exception as e:
-        eprint(e)
-
-
-async def remove_kickout_msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        chat: Chat = update.effective_chat  # type: ignore
-        msg: Message = update.effective_message  # type: ignore
-        if msg.from_user and msg.from_user.id != botID:
-            logger.info(f'[{chat.id}] {chat.title}: others remove user, skip')
-            return
-
-        # Comfirm join message
-        logger.info(
-            f'[{chat.id}] {chat.title}: RUNNING: remove kickout message')
-
-        # Remove kickout message
-        try:
-            await msg.delete()
-        except (Forbidden, BadRequest) as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
-        except TelegramError as e:
-            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
-
-    except Exception as e:
-        eprint(e)
 
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -220,12 +226,12 @@ def main():
     app.add_error_handler(error_handler)
     app.add_handler(CommandHandler('ping', ping))
 
+    app.add_handler(ChatMemberHandler(member_status_change, chat_member_types=0))
     app.add_handler(MessageHandler(
-        filters.StatusUpdate.NEW_CHAT_MEMBERS, kickout))
-    app.add_handler(MessageHandler(
-        filters.StatusUpdate.LEFT_CHAT_MEMBER, remove_kickout_msg))
+        filters.StatusUpdate.NEW_CHAT_MEMBERS | filters.StatusUpdate.LEFT_CHAT_MEMBER,
+        remove_join_left_msg))
 
-    app.run_webhook(**webhookConfig)
+    app.run_webhook(**webhookConfig, allowed_updates=['message', 'chat_member'])
 
 
 if __name__ == '__main__':
