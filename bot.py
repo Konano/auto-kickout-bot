@@ -12,7 +12,7 @@ import sentry_sdk
 from sentry_sdk.integrations.logging import SentryHandler
 from telegram import ChatMemberRestricted, Update
 from telegram.constants import ChatMemberStatus
-from telegram.error import BadRequest, Forbidden, TelegramError
+from telegram.error import BadRequest, Forbidden, TelegramError, TimedOut
 from telegram.ext import (Application, ChatMemberHandler, CommandHandler,
                           ContextTypes, MessageHandler, filters)
 
@@ -131,7 +131,7 @@ def exception_desc(e: Exception) -> str:
     return f'{e.__class__.__module__}.{e.__class__.__name__}'
 
 
-def eprint(e: Exception, level: int = logging.WARNING, msg: Optional[str] = None, stacklevel: int = 2) -> None:
+def eprint(e: Exception, level: int = logging.WARNING, msg: Optional[str] = None, stacklevel: int = 2, print_trace=True) -> None:
     """
     Print exception with traceback.
     """
@@ -144,7 +144,8 @@ def eprint(e: Exception, level: int = logging.WARNING, msg: Optional[str] = None
     exception_str = f'Exception: {exception_desc(e)}'
     logger.log(level, exception_str, stacklevel=stacklevel)
 
-    logger.debug(traceback.format_exc(), stacklevel=stacklevel)
+    if print_trace:
+        logger.debug(traceback.format_exc(), stacklevel=stacklevel)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -172,6 +173,8 @@ async def remove_join_left_msg(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.delete()
     except (Forbidden, BadRequest) as e:
         eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
+    except TimedOut as e:
+        eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG, print_trace=False)
     except TelegramError as e:
         eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
 
@@ -210,6 +213,8 @@ async def member_status_change(update: Update, context: ContextTypes.DEFAULT_TYP
             await chat.unban_member(user_id)
         except (Forbidden, BadRequest) as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
+        except TimedOut as e:
+            eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG, print_trace=False)
         except TelegramError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
 
