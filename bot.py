@@ -33,7 +33,7 @@ webhookConfig = {
 
 # logging
 
-BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(lineno)d - %(funcName)s - %(message)s'
+BASIC_FORMAT = '%(asctime)s - %(levelname)s - %(name)s - %(module)s - %(lineno)d - %(funcName)s - %(message)s'
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 
@@ -83,12 +83,11 @@ logger.setLevel('INFO')
 logger.addHandler(fhlr)
 
 # 模组调用: telegram
-logger = logging.getLogger('telegram')
-logger.setLevel('INFO')
+logging.getLogger('telegram').setLevel('INFO')
+logging.getLogger('telegram.ext.Application').setLevel('DEBUG')
 
 # # 模组调用: apscheduler
-# logger = logging.getLogger('apscheduler')
-# logger.setLevel('DEBUG')
+# logging.getLogger('apscheduler').setLevel('DEBUG')
 
 # 自行调用
 logger = logging.getLogger(__name__)
