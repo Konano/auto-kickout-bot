@@ -83,7 +83,6 @@ logger.setLevel('INFO')
 logger.addHandler(fhlr)
 
 # 模组调用: telegram
-logging.getLogger('telegram').setLevel('INFO')
 logging.getLogger('telegram.ext.Application').setLevel('DEBUG')
 
 # # 模组调用: apscheduler
