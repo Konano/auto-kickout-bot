@@ -12,7 +12,7 @@ import sentry_sdk
 from sentry_sdk.integrations.logging import SentryHandler
 from telegram import ChatMemberRestricted, Update
 from telegram.constants import ChatMemberStatus
-from telegram.error import BadRequest, Forbidden, TelegramError, TimedOut
+from telegram.error import BadRequest, Forbidden, NetworkError, TelegramError
 from telegram.ext import (Application, ChatMemberHandler, CommandHandler,
                           ContextTypes, MessageHandler, filters)
 
@@ -171,7 +171,7 @@ async def remove_join_left_msg(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.delete()
     except (Forbidden, BadRequest) as e:
         eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
-    except TimedOut as e:
+    except NetworkError as e:
         eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG, print_trace=False)
     except TelegramError as e:
         eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
@@ -187,8 +187,9 @@ async def member_status_change(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = new_member.user.id
     old_status = old_member.status
     new_status = new_member.status
-    logger.info(f'[{chat.id}] {chat.title}: STATUS_CHANGE: ({from_user_id}) ({user_id}) {old_status} -> {new_status}')
-    
+    logger.info(
+        f'[{chat.id}] {chat.title}: STATUS_CHANGE: ({from_user_id}) ({user_id}) {old_status} -> {new_status}')
+
     if from_user_id != user_id:
         return
 
@@ -211,7 +212,7 @@ async def member_status_change(update: Update, context: ContextTypes.DEFAULT_TYP
             await chat.unban_member(user_id)
         except (Forbidden, BadRequest) as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG)
-        except TimedOut as e:
+        except NetworkError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}', level=logging.DEBUG, print_trace=False)
         except TelegramError as e:
             eprint(e, msg=f'[{chat.id}] {chat.title}: {e.message}')
